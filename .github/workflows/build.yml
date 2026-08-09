@@ -112,6 +112,7 @@ jobs:
             's/androidx\.media3:([^:"]+):[0-9]+\.[0-9]+\.[0-9]+/androidx.media3:\1:1.4.1/g' {} \;
 
           echo "Media3 references:"
+
           grep -Rni "androidx.media3:" "$PROJECT_DIR" \
             --include="*.gradle" \
             --include="*.gradle.kts" || true
@@ -120,7 +121,7 @@ jobs:
         shell: bash
         run: |
           echo "Project directory:"
-          pwd
+          echo "$PROJECT_DIR"
 
           echo "Files:"
           find "$PROJECT_DIR" -maxdepth 3 -type f | sort
@@ -129,8 +130,32 @@ jobs:
         shell: bash
         run: |
           set -e
+
           cd "$PROJECT_DIR"
+
           gradle clean
+
+      - name: Print LibraryScreen.kt
+        shell: bash
+        run: |
+          set -e
+
+          FILE=$(find "$PROJECT_DIR" -name "LibraryScreen.kt" -print -quit)
+
+          if [ -z "$FILE" ]; then
+            echo "ERROR: LibraryScreen.kt not found."
+            exit 1
+          fi
+
+          echo "========================================"
+          echo "LibraryScreen.kt"
+          echo "File: $FILE"
+          echo "Showing lines 95-115"
+          echo "========================================"
+
+          nl -ba "$FILE" | sed -n '95,115p'
+
+          echo "========================================"
 
       - name: Build Debug APK
         shell: bash
@@ -147,6 +172,7 @@ jobs:
         shell: bash
         run: |
           echo "APK output:"
+
           find project -type f -name "*.apk" -print
 
       - name: Upload APK
