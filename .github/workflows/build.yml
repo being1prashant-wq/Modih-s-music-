@@ -2,7 +2,8 @@ name: Build Modih's Music Player
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
@@ -19,7 +20,7 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Setup Gradle 8.7
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.7"
@@ -32,7 +33,7 @@ jobs:
           ZIP=$(find . -maxdepth 2 -type f -iname "*.zip" | head -n 1)
 
           if [ -z "$ZIP" ]; then
-            echo "ERROR: Project ZIP not found."
+            echo "ERROR: No project ZIP found."
             exit 1
           fi
 
@@ -47,12 +48,10 @@ jobs:
         run: |
           set -e
 
-          SETTINGS=$(find project -type f \
-            \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
-            -print -quit)
+          SETTINGS=$(find project -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) -print -quit)
 
           if [ -z "$SETTINGS" ]; then
-            echo "ERROR: No Gradle project found."
+            echo "ERROR: Gradle project not found."
             find project -maxdepth 5 -type f
             exit 1
           fi
@@ -61,74 +60,23 @@ jobs:
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-          echo "================================="
-          echo "Gradle project:"
+          echo "Gradle project found at:"
           echo "$PROJECT_DIR"
-          echo "================================="
 
       - name: Force Media3 1.4.1
         shell: bash
         run: |
           set -e
 
-          echo "Searching Gradle files..."
-
-          find "$PROJECT_DIR" -type f \
-            \( -name "*.gradle" -o -name "*.gradle.kts" \) \
-            -print
+          echo "Gradle files:"
+          find "$PROJECT_DIR" -type f \( -name "*.gradle" -o -name "*.gradle.kts" \) -print
 
           echo "Replacing Media3 versions..."
 
-          find "$PROJECT_DIR" -type f \
-            \( -name "*.gradle" -o -name "*.gradle.kts" \) \
-            -exec sed -i \
-            -E 's/androidx\.media3:([^:"]+):[0-9]+\.[0-9]+\.[0-9]+/androidx.media3:\1:1.4.1/g' {} \;
+          find "$PROJECT_DIR" -type f \( -name "*.gradle" -o -name "*.gradle.kts" \) -exec sed -i -E 's/androidx\.media3:([^:"]+):[0-9]+\.[0-9]+\.[0-9]+/androidx.media3:\1:1.4.1/g' {} \;
 
-          # Also replace version variables such as:
-          # media3Version = "1.3.1"
-          find "$PROJECT_DIR" -type f \
-            \( -name "*.gradle" -o -name "*.gradle.kts" \) \
-            -exec sed -i \
-            -E 's/(media3Version[^=]*=[[:space:]]*["'\''])[0-9]+\.[0-9]+\.[0-9]+(["'\''])/\1'1.4.1'\2/g' {} \;
-
-          echo "Media3 references after replacement:"
-          grep -Rni "media3" "$PROJECT_DIR" \
-            --include="*.gradle" \
-            --include="*.gradle.kts" || true
-
-      - name: Force dependency versions
-        shell: bash
-        run: |
-          set -e
-
-          APP_GRADLE="$PROJECT_DIR/app/build.gradle.kts"
-
-          if [ -f "$APP_GRADLE" ]; then
-
-            cat >> "$APP_GRADLE" <<'EOF'
-
-            configurations.all {
-                resolutionStrategy.eachDependency {
-                    if (requested.group == "androidx.media3") {
-                        useVersion("1.4.1")
-                    }
-                }
-            }
-            EOF
-
-          fi
-
-      - name: Verify Media3 dependency graph
-        shell: bash
-        run: |
-          cd "$PROJECT_DIR"
-
-          echo "Checking resolved Media3 dependencies..."
-
-          gradle :app:dependencies \
-            --configuration debugRuntimeClasspath \
-            | grep -E "androidx.media3|media3-" \
-            || true
+          echo "Current Media3 references:"
+          grep -Rni "media3" "$PROJECT_DIR" --include="*.gradle" --include="*.gradle.kts" || true
 
       - name: Build Debug APK
         shell: bash
@@ -137,93 +85,16 @@ jobs:
 
           cd "$PROJECT_DIR"
 
-          echo "================================="
-          echo "BUILDING MODIH'S MUSIC PLAYER"
-          echo "================================="
+          echo "Building from:"
+          pwd
 
           gradle clean assembleDebug --stacktrace
 
       - name: Find APK
         shell: bash
         run: |
-          echo "================================="
-          echo "APK FILES"
-          echo "================================="
-
+          echo "APK files:"
           find project -type f -name "*.apk" -print
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Modih-Music-Debug
-          path: "project/**/build/outputs/apk/debug/*.apk"
-          if-no-files-found: error
-      - name: Find Android project
-        run: |
-          SETTINGS=$(find project -type f \
-            \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
-            -print -quit)
-
-          if [ -z "$SETTINGS" ]; then
-            echo "No Gradle project found."
-            find project -maxdepth 4 -type f
-            exit 1
-          fi
-
-          PROJECT_DIR=$(dirname "$SETTINGS")
-
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-          echo "Found project:"
-          echo "$PROJECT_DIR"
-
-      - name: Fix Android resources
-        run: |
-          set -e
-
-          STRINGS="$PROJECT_DIR/app/src/main/res/values/strings.xml"
-
-          echo "Checking:"
-          echo "$STRINGS"
-
-          if [ -f "$STRINGS" ]; then
-            python3 <<PY
-          from pathlib import Path
-
-          p = Path("$STRINGS")
-          text = p.read_text(encoding="utf-8")
-
-          # Fix common Android XML apostrophe/resource problems.
-          text = text.replace(
-              "Modih's Music Player",
-              "Modih\\'s Music Player"
-          )
-
-          text = text.replace(
-              "Modih&apos;s Music Player",
-              "Modih\\'s Music Player"
-          )
-
-          p.write_text(text, encoding="utf-8")
-
-          print("Fixed strings.xml:")
-          print(p.read_text(encoding="utf-8"))
-          PY
-          else
-            echo "strings.xml not found"
-          fi
-
-      - name: Show Gradle project
-        run: |
-          cd "$PROJECT_DIR"
-          ls -la
-          echo "Settings:"
-          cat settings.gradle.kts 2>/dev/null || cat settings.gradle
-
-      - name: Build APK
-        run: |
-          cd "$PROJECT_DIR"
-          gradle clean assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
