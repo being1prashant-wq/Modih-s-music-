@@ -112,7 +112,6 @@ jobs:
             's/androidx\.media3:([^:"]+):[0-9]+\.[0-9]+\.[0-9]+/androidx.media3:\1:1.4.1/g' {} \;
 
           echo "Media3 references:"
-
           grep -Rni "androidx.media3:" "$PROJECT_DIR" \
             --include="*.gradle" \
             --include="*.gradle.kts" || true
@@ -121,7 +120,7 @@ jobs:
         shell: bash
         run: |
           echo "Project directory:"
-          echo "$PROJECT_DIR"
+          pwd
 
           echo "Files:"
           find "$PROJECT_DIR" -maxdepth 3 -type f | sort
@@ -135,7 +134,7 @@ jobs:
 
           gradle clean
 
-      - name: Print LibraryScreen.kt
+      - name: Fix LibraryScreen Kotlin syntax
         shell: bash
         run: |
           set -e
@@ -148,14 +147,28 @@ jobs:
           fi
 
           echo "========================================"
-          echo "LibraryScreen.kt"
+          echo "Checking LibraryScreen.kt"
           echo "File: $FILE"
-          echo "Showing lines 95-115"
           echo "========================================"
 
+          echo "Before fix:"
           nl -ba "$FILE" | sed -n '95,115p'
 
-          echo "========================================"
+          # Fix the exact syntax problem found at line 105:
+          # }    renamePlaylist?.let { oldName ->
+          #
+          # It must become:
+          # }
+          # renamePlaylist?.let { oldName ->
+
+          perl -0pi -e 's/\}\s+renamePlaylist\?\.let/\}\n    renamePlaylist?.let/' "$FILE"
+
+          echo ""
+          echo "After fix:"
+          nl -ba "$FILE" | sed -n '95,115p'
+
+          echo ""
+          echo "LibraryScreen.kt syntax patch completed."
 
       - name: Build Debug APK
         shell: bash
@@ -164,14 +177,20 @@ jobs:
 
           cd "$PROJECT_DIR"
 
+          echo "========================================"
           echo "Building Modih Music Player..."
+          echo "========================================"
 
           gradle assembleDebug --stacktrace
 
       - name: Find APK
         shell: bash
         run: |
+          set -e
+
+          echo "========================================"
           echo "APK output:"
+          echo "========================================"
 
           find project -type f -name "*.apk" -print
 
